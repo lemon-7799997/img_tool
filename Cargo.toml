@@ -1,0 +1,17 @@
+[package]
+name = "img_tool"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+image = "0.25"
+glob = "0.3"
+rayon = "1"
+
+[profile.release]
+opt-level = "z"       # optimize for size
+lto = true            # link-time optimization
+codegen-units = 1     # single codegen unit for better inlining / dead-code elimination
+panic = "abort"       # remove panic-unwind machinery
+strip = true          # strip debug symbols
