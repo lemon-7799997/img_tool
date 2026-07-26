@@ -21,22 +21,39 @@ struct Cli {
     command: Command,
 }
 
+const RESIZE_HELP: &str = "\
+Examples:
+  img_tool resize --input ./input --output ./out --size 256x256 --aspect keep";
+
+const ATLAS_HELP: &str = "\
+Examples:
+  Tight packing (preserves original dims):
+    img_tool atlas -i ./input -o atlas.png
+    img_tool atlas -i ./input -o atlas.png --frames 4x3
+    img_tool atlas -i ./input -o atlas.png --atlas-size 4096x4096
+
+  Uniform grid (all images resized to same cell size):
+    img_tool atlas -i ./input -o atlas.png --resize 256x256 --spacing 10x10
+    img_tool atlas -i ./input -o atlas.png --resize 128x128 --frames 8x8 --spacing 4x4
+
+  Auto-sizing: atlas dimensions are rounded up to the nearest multiple of 512, always square.";
+
+const CUT_HELP: &str = "\
+Examples:
+  img_tool cut -i input.png -o ./out --segments 4x4
+  img_tool cut -i input.png -o ./out --segments 3x2 -c default
+  img_tool cut -i input.png -o ./out -s 2x2 --name tile_$col-$row --index-start 1";
+
 #[derive(clap::Subcommand, Debug)]
 enum Command {
     /// Batch resize images with aspect-ratio control (keep/center or stretch), multi-threaded
-    #[command(
-        after_help = "Examples:\n  img_tool resize --input ./images --output ./out --size 256x256 --aspect keep"
-    )]
+    #[command(after_help = RESIZE_HELP)]
     Resize(ResizeArgs),
     /// Pack images into a single sprite atlas with tight packing or uniform-grid layout
-    #[command(
-        after_help = "Examples:\n  Tight packing (preserves original dims):\n    img_tool atlas -i ./images -o atlas.png\n    img_tool atlas -i ./images -o atlas.png --frames 4x3\n    img_tool atlas -i ./images -o atlas.png --atlas-size 4096x4096\n\n  Uniform grid (all images resized to same cell size):\n    img_tool atlas -i ./images -o atlas.png --resize -s 256x256 --spacing 10x10\n    img_tool atlas -i ./images -o atlas.png --resize -s 128x128 --frames 8x8 --spacing 4x4\n\n  Auto-sizing: atlas dimensions are rounded up to the nearest multiple of 512, always square."
-    )]
+    #[command(after_help = ATLAS_HELP)]
     Atlas(AtlasArgs),
     /// Cut a single image into a grid of smaller segments
-    #[command(
-        after_help = "Examples:\n  img_tool cut -i input.png -o ./out --segments 4x4\n  img_tool cut -i input.png -o ./out --segments 3x2 -c default\n  img_tool cut -i input.png -o ./out -s 2x2 --name tile_$col-$row --index-start 1"
-    )]
+    #[command(after_help = CUT_HELP)]
     Cut(CutArgs),
 }
 
@@ -139,14 +156,11 @@ struct AtlasArgs {
     #[arg(long, short, default_value = "*.png", verbatim_doc_comment)]
     filter: String,
 
-    /// Enable per-image resize before packing (uniform grid mode).
+    /// Enable uniform grid mode: resize all images to the given cell size
+    /// before packing (e.g. "--resize 256x256").
     /// Without this flag, tight packing is used, preserving original dimensions.
-    #[arg(long, short, default_value_t = false, verbatim_doc_comment)]
-    resize: bool,
-
-    /// Cell size WxH for uniform grid mode (e.g. "256x256"). Requires --resize.
-    #[arg(long, short, default_value = "256x256", verbatim_doc_comment)]
-    size: String,
+    #[arg(long, short, verbatim_doc_comment)]
+    resize: Option<String>,
 
     /// Aspect ratio for resize: "keep" (center + transparent pad) or "stretch". Requires --resize.
     #[arg(long, short, default_value = "keep", verbatim_doc_comment)]
@@ -174,10 +188,7 @@ struct AtlasArgs {
 fn run_atlas(args: AtlasArgs) -> Result<(), Box<dyn std::error::Error>> {
     // warn about resize-dependent params without --resize
     let mut warnings: Vec<&str> = Vec::new();
-    if !args.resize {
-        if args.size != "256x256" {
-            warnings.push("--size");
-        }
+    if args.resize.is_none() {
         if args.aspect != "keep" {
             warnings.push("--aspect");
         }
@@ -193,8 +204,13 @@ fn run_atlas(args: AtlasArgs) -> Result<(), Box<dyn std::error::Error>> {
         input: args.input,
         output: args.output,
         filter: args.filter,
-        do_resize: args.resize,
-        resize_size: parse_size(&args.size)?,
+        do_resize: args.resize.is_some(),
+        resize_size: args
+            .resize
+            .as_deref()
+            .map(parse_size)
+            .transpose()?
+            .unwrap_or((256, 256)),
         resize_aspect: args.aspect,
         spacing: parse_size(&args.spacing)?,
         frames: args.frames.as_deref().map(parse_size).transpose()?,

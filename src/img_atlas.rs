@@ -304,9 +304,7 @@ fn compute_atlas_dims(
     }
     let raw_w = spacing.0 + cols * cell_w;
     let raw_h = spacing.1 + rows * cell_h;
-    let max_dim = raw_w.max(raw_h);
-    let rounded = ((max_dim + 511) / 512) * 512;
-    (rounded, rounded)
+    (raw_w, raw_h)
 }
 
 /// Round a dimension up to the nearest multiple of 512 → square atlas.
@@ -372,5 +370,6 @@ fn save_atlas(
         }
     }
     println!("Saved → {}", output.display());
+    println!();
     Ok(())
 }
