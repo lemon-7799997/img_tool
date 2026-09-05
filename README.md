@@ -5,7 +5,7 @@ A tiny Rust CLI tool for batch image resizing, sprite-atlas packing and image cu
 ## Features
 
 - **resize** — batch resize images onto a fixed WxH canvas with stretch mode (scale / keep / keep-aspect) and 9-direction alignment, multi-threaded
-- **atlas** — pack images into a single sprite atlas with tight packing or uniform-grid layout
+- **atlas** — pack images into a single sprite atlas with tight packing or uniform-grid layout (uniform-grid cells use the same `--stretch`/`--align` controls as **resize**)
 - **cut** — slice a single image into a grid of smaller segments
 
 ## Build

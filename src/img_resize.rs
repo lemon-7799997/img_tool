@@ -58,6 +58,9 @@ pub struct Align {
 }
 
 impl Align {
+    /// Centered alignment (used by the test suite and callers that
+    /// construct an `Align` directly).
+    #[allow(dead_code)]
     pub const CENTER: Align = Align {
         h: HAlign::Center,
         v: VAlign::Center,
@@ -83,6 +86,27 @@ impl Align {
             VAlign::Bottom => pad_y,
         };
         (ox, oy)
+    }
+
+    /// Canonical hyphenated name, e.g. `top-left`. Centered axes are
+    /// omitted: `top`, `left`, `center`.
+    pub fn name(self) -> String {
+        let h = match self.h {
+            HAlign::Left => "left",
+            HAlign::Center => "",
+            HAlign::Right => "right",
+        };
+        let v = match self.v {
+            VAlign::Top => "top",
+            VAlign::Center => "",
+            VAlign::Bottom => "bottom",
+        };
+        match (h.is_empty(), v.is_empty()) {
+            (true, true) => "center".to_string(),
+            (true, false) => v.to_string(),
+            (false, true) => h.to_string(),
+            (false, false) => format!("{}-{}", v, h),
+        }
     }
 }
 

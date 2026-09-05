@@ -71,6 +71,7 @@ pub struct AtlasConfig {
     pub do_resize: bool,
     pub resize_size: (u32, u32),
     pub resize_mode: ScaleMode,
+    pub resize_align: Align,
     pub spacing: (u32, u32),
     pub frames: Option<(u32, u32)>,
     pub atlas_size: Option<(u32, u32)>,
@@ -140,10 +141,11 @@ fn run_atlas_with_resize(
     config: AtlasConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!(
-        "Resizing to {}x{} (aspect={})...",
+        "Resizing to {}x{} (stretch={}, align={})...",
         config.resize_size.0,
         config.resize_size.1,
-        config.resize_mode.as_str()
+        config.resize_mode.as_str(),
+        config.resize_align.name()
     );
 
     let pairs: Vec<(usize, ImageItem)> = items
@@ -154,7 +156,7 @@ fn run_atlas_with_resize(
                 &it.image,
                 config.resize_size,
                 config.resize_mode,
-                Align::CENTER,
+                config.resize_align,
                 "png",
             );
             (

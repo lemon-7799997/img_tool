@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use image::codecs::png::CompressionType;
 use img_atlas::AtlasConfig;
-use img_resize::{ScaleMode, collect_files, parse_align, parse_size, parse_stretch, resize_image};
+use img_resize::{collect_files, parse_align, parse_size, parse_stretch, resize_image};
 use rayon::prelude::*;
 
 /// image tool — resize & atlas packing.
@@ -132,7 +132,7 @@ fn run_resize(args: ResizeArgs) -> Result<(), Box<dyn std::error::Error>> {
         size.0,
         size.1,
         mode.as_str(),
-        args.align,
+        align.name(),
         args.output.display()
     );
 
@@ -184,9 +184,26 @@ struct AtlasArgs {
     #[arg(long, short, verbatim_doc_comment)]
     resize: Option<String>,
 
-    /// Aspect ratio for resize: "keep" (center + transparent pad) or "stretch". Requires --resize.
-    #[arg(long, short, default_value = "keep", verbatim_doc_comment)]
-    aspect: String,
+    /// How to scale each image onto its WxH cell:
+    /// - "scale": deform to exactly fill the cell (aspect ratio lost);
+    /// - "keep": never upscale — when the image fits inside the cell its
+    ///   original pixels are kept and the leftover is filled; when it is
+    ///   larger it behaves like "keep-aspect";
+    /// - "keep-aspect": scale to fit inside the cell preserving aspect.
+    /// Requires --resize.
+    #[arg(long, default_value = "keep-aspect", verbatim_doc_comment)]
+    stretch: String,
+
+    /// 9-direction placement of each image within its cell
+    /// (only visible with --stretch keep/keep-aspect). Written as
+    /// "vertical-horizontal", the two parts split by '-' in either order:
+    /// "top-left" == "left-top", "top-right", "bottom-left", ...
+    /// Parts are: top, bottom (vertical) / left, right (horizontal) /
+    /// center (fills the axis not given). A single part means the other
+    /// axis is centered: "top" == "top-center", "left" == "left-center".
+    /// Requires --resize.
+    #[arg(long, default_value = "center", verbatim_doc_comment)]
+    align: String,
 
     /// Gap between cells in WxH format (e.g. "10x10"). Requires --resize.
     #[arg(long, default_value = "0x0", verbatim_doc_comment)]
@@ -211,8 +228,11 @@ fn run_atlas(args: AtlasArgs) -> Result<(), Box<dyn std::error::Error>> {
     // warn about resize-dependent params without --resize
     let mut warnings: Vec<&str> = Vec::new();
     if args.resize.is_none() {
-        if args.aspect != "keep" {
-            warnings.push("--aspect");
+        if args.stretch != "keep-aspect" {
+            warnings.push("--stretch");
+        }
+        if args.align != "center" {
+            warnings.push("--align");
         }
         if args.spacing != "0x0" {
             warnings.push("--spacing");
@@ -222,19 +242,8 @@ fn run_atlas(args: AtlasArgs) -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("Warning: {} is set but --resize is off, ignoring", name);
     }
 
-    // Atlas keeps its legacy two-value aspect flag, mapped onto the shared
-    // resize core: "keep" (contain + centered padding) or "stretch" (fill).
-    let resize_mode = match args.aspect.to_lowercase().as_str() {
-        "keep" => ScaleMode::KeepAspect,
-        "stretch" => ScaleMode::Scale,
-        other => {
-            return Err(format!(
-                "Unknown aspect mode '{}', expected: keep or stretch",
-                other
-            )
-            .into())
-        }
-    };
+    let resize_mode = parse_stretch(&args.stretch)?;
+    let resize_align = parse_align(&args.align)?;
 
     let config = AtlasConfig {
         input: args.input,
@@ -248,6 +257,7 @@ fn run_atlas(args: AtlasArgs) -> Result<(), Box<dyn std::error::Error>> {
             .transpose()?
             .unwrap_or((256, 256)),
         resize_mode,
+        resize_align,
         spacing: parse_size(&args.spacing)?,
         frames: args.frames.as_deref().map(parse_size).transpose()?,
         atlas_size: args.atlas_size.as_deref().map(parse_size).transpose()?,
