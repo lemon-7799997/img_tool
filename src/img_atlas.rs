@@ -6,7 +6,7 @@ use image::{
 };
 use rayon::prelude::*;
 
-use crate::img_resize;
+use crate::img_resize::{self, Align, ScaleMode};
 
 // ---------- natural sort helpers ----------
 
@@ -70,7 +70,7 @@ pub struct AtlasConfig {
     pub filter: String,
     pub do_resize: bool,
     pub resize_size: (u32, u32),
-    pub resize_aspect: String,
+    pub resize_mode: ScaleMode,
     pub spacing: (u32, u32),
     pub frames: Option<(u32, u32)>,
     pub atlas_size: Option<(u32, u32)>,
@@ -141,7 +141,9 @@ fn run_atlas_with_resize(
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "Resizing to {}x{} (aspect={})...",
-        config.resize_size.0, config.resize_size.1, config.resize_aspect
+        config.resize_size.0,
+        config.resize_size.1,
+        config.resize_mode.as_str()
     );
 
     let pairs: Vec<(usize, ImageItem)> = items
@@ -151,10 +153,10 @@ fn run_atlas_with_resize(
             let resized = img_resize::resize_dynamic_image(
                 &it.image,
                 config.resize_size,
-                &config.resize_aspect,
+                config.resize_mode,
+                Align::CENTER,
                 "png",
-            )
-            .expect("Failed to resize");
+            );
             (
                 i,
                 ImageItem {

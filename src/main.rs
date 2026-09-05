@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use image::codecs::png::CompressionType;
 use img_atlas::AtlasConfig;
-use img_resize::{collect_files, parse_size, resize_image};
+use img_resize::{ScaleMode, collect_files, parse_align, parse_size, parse_stretch, resize_image};
 use rayon::prelude::*;
 
 /// image tool — resize & atlas packing.
@@ -23,7 +23,8 @@ struct Cli {
 
 const RESIZE_HELP: &str = "\
 Examples:
-  img_tool resize --input ./input --output ./out --size 256x256 --aspect keep";
+  img_tool resize --input ./input --output ./out --size 256x256 --stretch keep-aspect
+  img_tool resize --input ./input --output ./out --size 512x512 --stretch keep --align bottom-right";
 
 const ATLAS_HELP: &str = "\
 Examples:
@@ -46,7 +47,7 @@ Examples:
 
 #[derive(clap::Subcommand, Debug)]
 enum Command {
-    /// Batch resize images with aspect-ratio control (keep/center or stretch), multi-threaded
+    /// Batch resize images onto a fixed WxH canvas with stretch/align control, multi-threaded
     #[command(after_help = RESIZE_HELP)]
     Resize(ResizeArgs),
     /// Pack images into a single sprite atlas with tight packing or uniform-grid layout
@@ -59,9 +60,12 @@ enum Command {
 
 // ---------- resize ----------
 
-/// Batch resize images with aspect-ratio control, multi-threaded via rayon.
+/// Batch resize images onto a fixed WxH canvas, multi-threaded via rayon.
 ///
-/// Supports keep (center + transparent pad) and stretch modes.
+/// The output canvas is always exactly WxH. `--stretch` picks how the image
+/// is scaled, `--align` places it within the leftover space (only visible
+/// when the image does not cover the whole canvas). Leftover space is filled
+/// transparent for PNG output, black for JPG output.
 /// Output preserves the original filename, converting non-PNG formats to PNG.
 #[derive(clap::Args, Debug)]
 struct ResizeArgs {
@@ -81,10 +85,25 @@ struct ResizeArgs {
     #[arg(long, short, default_value = "256x256", verbatim_doc_comment)]
     size: String,
 
-    /// Aspect ratio handling: "keep" centers the image with transparent padding,
-    /// "stretch" deforms the image to exactly fill the target size.
-    #[arg(long, short, default_value = "keep", verbatim_doc_comment)]
-    aspect: String,
+    /// How to scale the image onto the WxH canvas:
+    /// - "scale": deform to exactly fill the canvas (aspect ratio lost);
+    /// - "keep": never upscale — when the image fits inside the canvas its
+    ///   original pixels are kept and the leftover is filled; when it is
+    ///   larger it behaves like "keep-aspect";
+    /// - "keep-aspect": scale to fit inside the canvas preserving aspect.
+    #[arg(long, default_value = "keep-aspect", verbatim_doc_comment)]
+    stretch: String,
+
+    /// 9-direction placement within the leftover canvas space
+    /// (only visible with --stretch keep/keep-aspect). Written as
+    /// "vertical-horizontal", the two parts split by '-' in either order:
+    /// "top-left" == "left-top", "top-right", "bottom-left", ...
+    /// Parts are: top, bottom (vertical) / left, right (horizontal) /
+    /// center (fills the axis not given). A single part means the other
+    /// axis is centered: "top" == "top-center", "left" == "left-center",
+    /// "center" centers both.
+    #[arg(long, default_value = "center", verbatim_doc_comment)]
+    align: String,
 
     /// PNG compression level: "best", "default", "fast", or a number 0–9.
     #[arg(long, short, default_value = "best", verbatim_doc_comment)]
@@ -93,6 +112,8 @@ struct ResizeArgs {
 
 fn run_resize(args: ResizeArgs) -> Result<(), Box<dyn std::error::Error>> {
     let size = parse_size(&args.size)?;
+    let mode = parse_stretch(&args.stretch)?;
+    let align = parse_align(&args.align)?;
     let compression = parse_compression(&args.compression)?;
     let files = collect_files(&args.input, &args.filter)?;
 
@@ -106,18 +127,19 @@ fn run_resize(args: ResizeArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!(
-        "Resizing {} file(s) to {}x{}, aspect={}, output='{}'",
+        "Resizing {} file(s) to {}x{}, stretch={}, align={}, output='{}'",
         files.len(),
         size.0,
         size.1,
-        args.aspect,
+        mode.as_str(),
+        args.align,
         args.output.display()
     );
 
     let results: Vec<_> = files
         .par_iter()
         .map(|file| {
-            let status = match resize_image(file, &args.output, size, &args.aspect, compression) {
+            let status = match resize_image(file, &args.output, size, mode, align, compression) {
                 Ok(()) => "OK".to_string(),
                 Err(e) => format!("FAILED: {}", e),
             };
@@ -200,6 +222,20 @@ fn run_atlas(args: AtlasArgs) -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("Warning: {} is set but --resize is off, ignoring", name);
     }
 
+    // Atlas keeps its legacy two-value aspect flag, mapped onto the shared
+    // resize core: "keep" (contain + centered padding) or "stretch" (fill).
+    let resize_mode = match args.aspect.to_lowercase().as_str() {
+        "keep" => ScaleMode::KeepAspect,
+        "stretch" => ScaleMode::Scale,
+        other => {
+            return Err(format!(
+                "Unknown aspect mode '{}', expected: keep or stretch",
+                other
+            )
+            .into())
+        }
+    };
+
     let config = AtlasConfig {
         input: args.input,
         output: args.output,
@@ -211,7 +247,7 @@ fn run_atlas(args: AtlasArgs) -> Result<(), Box<dyn std::error::Error>> {
             .map(parse_size)
             .transpose()?
             .unwrap_or((256, 256)),
-        resize_aspect: args.aspect,
+        resize_mode,
         spacing: parse_size(&args.spacing)?,
         frames: args.frames.as_deref().map(parse_size).transpose()?,
         atlas_size: args.atlas_size.as_deref().map(parse_size).transpose()?,
