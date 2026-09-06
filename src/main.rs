@@ -35,9 +35,7 @@ Examples:
 
   Uniform grid (all images resized to same cell size):
     img_tool atlas -i ./input -o atlas.png --resize 256x256 --spacing 10x10
-    img_tool atlas -i ./input -o atlas.png --resize 128x128 --frames 8x8 --spacing 4x4
-
-  Auto-sizing: atlas dimensions are rounded up to the nearest multiple of 512, always square.";
+    img_tool atlas -i ./input -o atlas.png --resize 128x128 --frames 8x8 --spacing 4x4";
 
 const CUT_HELP: &str = "\
 Examples:
@@ -162,8 +160,6 @@ fn run_resize(args: ResizeArgs) -> Result<(), Box<dyn std::error::Error>> {
 /// Two modes:
 /// - Tight packing (no --resize): preserves original dimensions, packs tightly row-by-row.
 /// - Uniform grid (with --resize): all images resized to same cell size first.
-///
-/// Auto-sizing: atlas dimensions are rounded up to the nearest multiple of 512, always square.
 #[derive(clap::Args, Debug)]
 struct AtlasArgs {
     /// Input directory containing source images (must be a directory).

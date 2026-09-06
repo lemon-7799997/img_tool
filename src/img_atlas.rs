@@ -251,7 +251,7 @@ fn run_atlas_tight(
     let (atlas_w, atlas_h) = if let Some(size) = config.atlas_size {
         size
     } else {
-        round_to_512_square(content_w.max(content_h))
+        (content_w, content_h)
     };
 
     let rows_count = rows.len();
@@ -309,12 +309,6 @@ fn compute_atlas_dims(
     let raw_w = spacing.0 + cols * cell_w;
     let raw_h = spacing.1 + rows * cell_h;
     (raw_w, raw_h)
-}
-
-/// Round a dimension up to the nearest multiple of 512 → square atlas.
-fn round_to_512_square(dim: u32) -> (u32, u32) {
-    let rounded = ((dim + 511) / 512) * 512;
-    (rounded, rounded)
 }
 
 // ---------- stitching ----------
